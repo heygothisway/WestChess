@@ -1,51 +1,1560 @@
-<!doctype html>
-<html lang="zh-Hant">
+<!DOCTYPE html>
+<html lang="zh-TW">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#2b2b2b">
-<link rel="manifest" href="manifest.json">
-<title>西洋棋</title>
-<style>
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:#2b2b2b;color:#eee;font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:8px}
-#status{font-size:18px;margin:8px 0;min-height:26px;text-align:center}
-#board{display:grid;grid-template-columns:repeat(8,1fr);width:min(96vw,70vh);aspect-ratio:1;border:3px solid #555;user-select:none}
-.sq{display:flex;align-items:center;justify-content:center;font-size:min(10.5vw,8.5vh);line-height:1;position:relative}
-.l{background:#f0d9b5;color:#000}.d{background:#b58863;color:#000}
-.w{color:#fff;text-shadow:0 0 2px #000,0 0 2px #000,0 0 3px #000}.b{color:#111}
-.sel{background:#f6f669!important}.last{box-shadow:inset 0 0 0 100px rgba(255,255,0,.35)}
-.chk{background:#e55!important}
-.hint::after{content:"";width:28%;height:28%;border-radius:50%;background:rgba(0,120,0,.5);position:absolute}
-.hint.cap::after{width:90%;height:90%;background:none;border:4px solid rgba(0,120,0,.6)}
-#ctl{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px}
-select,button{font-size:16px;padding:10px 14px;border-radius:8px;border:0;background:#444;color:#eee}
-button{background:#3a7d44}
-#promo{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;gap:10px}
-#promo button{font-size:48px;background:#eee;padding:8px 14px}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>親子歡樂西洋棋 - 爸爸與寶貝的棋盤時光</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#8b5a2b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="歡樂西洋棋">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+}
+</script>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Google Fonts 圓體字型，增加兒童親和力 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <!-- 引入 Canvas Confetti 製作獲勝彩帶特效 -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #fdf8f0;
+            color: #4a3728;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* 溫潤木質棋盤外框 */
+        .board-frame {
+            background: linear-gradient(145deg, #8b5a2b, #6b4226);
+            box-shadow: 0 12px 28px rgba(74, 55, 40, 0.25), inset 0 2px 4px rgba(255, 255, 255, 0.2);
+        }
+
+        /* 棋盤格線配色：護眼奶油色與溫潤淺木色 */
+        .sq-light {
+            background-color: #f3e5ce;
+        }
+        .sq-dark {
+            background-color: #b58863;
+        }
+
+        /* 上一步移動高亮 */
+        .sq-last-move {
+            background-color: rgba(246, 214, 102, 0.78) !important;
+        }
+
+        /* 當前選中格子 */
+        .sq-selected {
+            background-color: rgba(104, 187, 89, 0.78) !important;
+        }
+
+        /* 將軍 / 將死警告高亮 */
+        .sq-check {
+            background: radial-gradient(circle, rgba(239, 68, 68, 0.95) 25%, rgba(220, 38, 38, 0.65) 80%) !important;
+            box-shadow: inset 0 0 14px rgba(185, 28, 28, 0.9);
+            animation: pulse-danger 1.4s infinite;
+        }
+
+        /* 賽後復盤：攻擊國王的致命棋子高亮 */
+        .sq-attacker {
+            box-shadow: inset 0 0 0 4px rgba(239, 68, 68, 0.9), 0 0 12px rgba(239, 68, 68, 0.7);
+        }
+
+        @keyframes pulse-danger {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(0.96); }
+        }
+
+        /* 兒童友善提示：一般合法移動綠點 */
+        .hint-move {
+            width: 34%;
+            height: 34%;
+            background-color: rgba(34, 197, 94, 0.85);
+            border: 3px solid rgba(255, 255, 255, 0.95);
+            border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            pointer-events: none;
+            transition: transform 0.15s ease;
+        }
+
+        /* 兒童友善提示：特殊走法（王車易位 / 吃過路兵）紫點 */
+        .hint-special {
+            width: 38%;
+            height: 38%;
+            background-color: rgba(168, 85, 247, 0.9);
+            border: 3px solid rgba(255, 255, 255, 0.95);
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.65);
+            pointer-events: none;
+            animation: pulse-ring 1.4s infinite;
+        }
+
+        /* 兒童友善提示：可吃子紅圈 */
+        .hint-capture {
+            width: 84%;
+            height: 84%;
+            border: 5px solid rgba(239, 68, 68, 0.88);
+            border-radius: 50%;
+            box-shadow: inset 0 0 8px rgba(239, 68, 68, 0.5), 0 2px 6px rgba(0,0,0,0.2);
+            pointer-events: none;
+            animation: pulse-ring 1.4s infinite;
+        }
+
+        @keyframes pulse-ring {
+            0%, 100% { transform: scale(0.95); opacity: 0.9; }
+            50% { transform: scale(1.04); opacity: 1; }
+        }
+
+        /* 棋子立體感與動畫 */
+        .piece-svg {
+            width: 84%;
+            height: 84%;
+            filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.32));
+            transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+            pointer-events: none;
+        }
+
+        .square-cell:active .piece-svg {
+            transform: scale(1.12);
+        }
+
+        .piece-selected {
+            transform: translateY(-4px) scale(1.1) !important;
+            filter: drop-shadow(0 8px 8px rgba(0, 0, 0, 0.4));
+        }
+
+        /* 棋盤翻轉過渡 */
+        .board-grid {
+            transition: transform 0.5s ease-in-out;
+        }
+        .board-flipped {
+            transform: rotate(180deg);
+        }
+        .board-flipped .piece-svg,
+        .board-flipped .coord-label {
+            transform: rotate(180deg);
+        }
+        .board-flipped .piece-selected {
+            transform: rotate(180deg) translateY(-4px) scale(1.1) !important;
+        }
+
+        /* 按鈕立體點擊效果 */
+        .btn-kid {
+            transition: all 0.15s ease;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.15);
+        }
+        .btn-kid:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 rgba(0,0,0,0.15);
+        }
+    </style>
 </head>
-<body>
-<div id="status"></div>
-<div id="board"></div>
-<div id="ctl">
- <select id="mode">
-  <option value="cpu">對電腦</option>
-  <option value="two">雙人（同一支手機）</option>
- </select>
- <select id="level">
-  <option value="1">電腦：入門</option>
-  <option value="2" selected>電腦：普通</option>
-  <option value="3">電腦：困難</option>
- </select>
- <select id="side">
-  <option value="w">我執白</option>
-  <option value="b">我執黑</option>
- </select>
- <button id="new">新遊戲</button>
- <button id="undo">悔棋</button>
-</div>
-<div id="promo"></div>
-<script type="module" src="app.js"></script>
+<body class="min-h-screen flex flex-col items-center justify-between p-2 sm:p-4 bg-[#fdf8f0]">
+
+    <!-- 頂部標題與控制列 -->
+    <header class="w-full max-w-4xl flex flex-wrap items-center justify-between gap-2 bg-white/90 backdrop-blur px-4 py-2.5 rounded-2xl shadow-sm border border-[#e6d5c1]">
+        <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center text-white text-2xl shadow-inner">
+                ♔
+            </div>
+            <div>
+                <h1 class="text-lg sm:text-xl font-black text-[#4a3728] tracking-wide">親子歡樂西洋棋</h1>
+                <p class="text-xs text-[#8c6d53] hidden sm:block">爸爸與寶貝的快樂棋盤時光</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <!-- 音效開關 -->
+            <button id="btn-sound" onclick="toggleSound()" class="btn-kid p-2.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-[#5c4033] font-bold text-sm flex items-center gap-1.5" title="音效開關">
+                <span id="sound-icon" class="text-lg">🔊</span>
+                <span class="hidden md:inline">音效開</span>
+            </button>
+            <!-- 提示開關 -->
+            <button id="btn-hints" onclick="toggleHints()" class="btn-kid p-2.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-sm flex items-center gap-1.5" title="兒童步數提示">
+                <span id="hint-icon" class="text-lg">💡</span>
+                <span class="hidden md:inline">步數提示</span>
+            </button>
+            <!-- 新局 / 模式設定 -->
+            <button onclick="openSetupModal()" class="btn-kid px-3.5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm flex items-center gap-1.5">
+                <span class="text-base">🎮</span>
+                <span>新局 / 模式</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- 賽後觀看模式浮動狀態列（當玩家在結束畫面點擊「觀看棋盤」時顯示） -->
+    <div id="review-banner" class="hidden w-full max-w-4xl mt-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white shadow-md border-2 border-amber-200 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2 font-black text-sm sm:text-base">
+            <span class="text-xl">🔍</span>
+            <span id="review-banner-text">🏆 白方將死獲勝！目前為賽後觀看模式</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="reopenGameOverModal()" class="btn-kid px-3 py-1.5 rounded-xl bg-white text-orange-700 hover:bg-amber-50 font-black text-xs sm:text-sm flex items-center gap-1">
+                <span>📊</span> <span>查看結算畫面</span>
+            </button>
+            <button onclick="restartCurrentMode()" class="btn-kid px-3 py-1.5 rounded-xl bg-[#4a3728] text-white hover:bg-[#36271c] font-black text-xs sm:text-sm flex items-center gap-1">
+                <span>🔄</span> <span>再來一局</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 主遊戲區塊 -->
+    <main class="w-full max-w-4xl flex-1 flex flex-col lg:flex-row items-center justify-center gap-4 my-2">
+        
+        <!-- 左側/上方：黑方狀態與戰利品區 -->
+        <div class="w-full lg:w-56 flex lg:flex-col justify-between items-center bg-white rounded-2xl p-3 shadow-sm border border-[#e6d5c1] order-1">
+            <div class="flex items-center gap-2.5 w-full">
+                <div id="black-avatar" class="w-11 h-11 rounded-full bg-slate-800 text-white flex items-center justify-center text-2xl shadow border-2 border-slate-600 shrink-0">
+                    ♚
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                        <span id="black-name" class="font-bold text-base text-slate-800 truncate">黑方玩家</span>
+                        <span id="black-score" class="text-xs font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 hidden">+0</span>
+                    </div>
+                    <div id="black-status" class="text-xs font-medium text-slate-500 truncate">等待白方走棋</div>
+                </div>
+            </div>
+            <!-- 黑方吃掉的白子（戰利品） -->
+            <div id="black-captured" class="flex flex-wrap items-center gap-0.5 mt-0 lg:mt-2 min-h-[28px] w-full justify-end lg:justify-start bg-slate-50 p-1.5 rounded-xl border border-slate-100">
+                <span class="text-xs text-slate-400 px-1">戰利品區</span>
+            </div>
+        </div>
+
+        <!-- 中央：西洋棋盤 -->
+        <div class="flex flex-col items-center justify-center order-2">
+            <!-- 狀態提示橫幅 -->
+            <div id="turn-banner" class="mb-2 px-5 py-1.5 rounded-full bg-white border-2 border-amber-400 shadow-sm flex items-center gap-2 text-sm sm:text-base font-extrabold text-[#4a3728]">
+                <span id="turn-dot" class="w-3.5 h-3.5 rounded-full bg-amber-400 inline-block"></span>
+                <span id="turn-text">輪到白方走棋！</span>
+            </div>
+
+            <!-- 棋盤本體 -->
+            <div class="board-frame p-2.5 sm:p-3.5 rounded-2xl">
+                <div id="chessboard" class="board-grid grid grid-cols-8 grid-rows-8 w-[88vw] h-[88vw] max-w-[440px] max-h-[440px] sm:w-[460px] sm:h-[460px] rounded-lg overflow-hidden border-2 border-[#4a3728]">
+                    <!-- 64 格由 JS 動態產生 -->
+                </div>
+            </div>
+
+            <!-- 兒童圖例說明小字 -->
+            <div class="flex items-center justify-center gap-4 mt-2 text-xs font-bold text-[#7c5e44]">
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>可移動</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full border-2 border-red-500 inline-block"></span>可吃子</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block"></span>特殊走法(易位/過路兵)</span>
+            </div>
+
+            <!-- 棋盤下方快捷操作列 -->
+            <div class="w-full max-w-[460px] flex items-center justify-between gap-2 mt-2">
+                <button id="btn-undo" onclick="undoMove()" disabled class="btn-kid flex-1 py-2.5 px-3 rounded-xl bg-amber-100 hover:bg-amber-200 disabled:opacity-40 disabled:pointer-events-none text-[#4a3728] font-bold text-sm sm:text-base flex items-center justify-center gap-1.5">
+                    <span>↩️</span> <span>悔棋一步</span>
+                </button>
+                <button id="btn-flip" onclick="manualFlipBoard()" class="btn-kid py-2.5 px-4 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold text-sm sm:text-base flex items-center justify-center gap-1.5" title="手動旋轉棋盤方向">
+                    <span>🔄</span> <span class="hidden sm:inline">旋轉棋盤</span>
+                </button>
+                <button id="btn-ask-hint" onclick="askHintMove()" class="btn-kid flex-1 py-2.5 px-3 rounded-xl bg-sky-100 hover:bg-sky-200 disabled:opacity-40 disabled:pointer-events-none text-sky-900 font-bold text-sm sm:text-base flex items-center justify-center gap-1.5">
+                    <span>✨</span> <span>幫我想一步</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 右側/下方：白方狀態與戰利品區 -->
+        <div class="w-full lg:w-56 flex lg:flex-col justify-between items-center bg-white rounded-2xl p-3 shadow-sm border border-[#e6d5c1] order-3">
+            <div class="flex items-center gap-2.5 w-full">
+                <div id="white-avatar" class="w-11 h-11 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-2xl shadow border-2 border-amber-400 shrink-0">
+                    ♔
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                        <span id="white-name" class="font-bold text-base text-[#4a3728] truncate">白方玩家</span>
+                        <span id="white-score" class="text-xs font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 hidden">+0</span>
+                    </div>
+                    <div id="white-status" class="text-xs font-medium text-emerald-600 truncate">請選擇棋子出發</div>
+                </div>
+            </div>
+            <!-- 白方吃掉的黑子（戰利品） -->
+            <div id="white-captured" class="flex flex-wrap items-center gap-0.5 mt-0 lg:mt-2 min-h-[28px] w-full justify-end lg:justify-start bg-amber-50/50 p-1.5 rounded-xl border border-amber-100">
+                <span class="text-xs text-slate-400 px-1">戰利品區</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- 遊戲設定與模式選擇視窗 (預設開啟讓父子選模式) -->
+    <div id="setup-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-[#fffcf7] w-full max-w-md rounded-3xl p-6 shadow-2xl border-4 border-amber-300">
+            <div class="text-center mb-5">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-400 text-white text-4xl shadow-md mb-2">
+                    ♔
+                </div>
+                <h2 class="text-2xl font-black text-[#4a3728]">選擇對戰模式</h2>
+                <p class="text-sm text-[#8c6d53] mt-1">要跟爸爸媽媽一起玩，還是挑戰電腦呢？</p>
+            </div>
+
+            <div class="space-y-3">
+                <!-- 模式 1：親子雙人同機（並肩不翻轉） -->
+                <button onclick="startGame('pvp_side')" class="btn-kid w-full p-4 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white text-left flex items-center gap-4">
+                    <span class="text-3xl bg-white/25 p-2.5 rounded-xl">👨‍👦</span>
+                    <div>
+                        <div class="font-black text-lg">親子並肩對戰（雙人）</div>
+                        <div class="text-xs text-white/95">棋盤不翻轉，適合父子並肩坐著一起討論！</div>
+                    </div>
+                </button>
+
+                <!-- 模式 2：雙人面對面（自動翻轉） -->
+                <button onclick="startGame('pvp_flip')" class="btn-kid w-full p-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white text-left flex items-center gap-4">
+                    <span class="text-3xl bg-white/25 p-2.5 rounded-xl">🔄</span>
+                    <div>
+                        <div class="font-black text-lg">面對面輪流玩（自動翻轉）</div>
+                        <div class="text-xs text-white/95">每走一步棋盤自動轉向，適合在平板上對坐！</div>
+                    </div>
+                </button>
+
+                <!-- 模式 3：挑戰電腦（新手兒童友善） -->
+                <button onclick="startGame('ai_easy')" class="btn-kid w-full p-4 rounded-2xl bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 text-white text-left flex items-center gap-4">
+                    <span class="text-3xl bg-white/25 p-2.5 rounded-xl">🧸</span>
+                    <div>
+                        <div class="font-black text-lg">挑戰小熊機器人（新手 AI）</div>
+                        <div class="text-xs text-white/95">溫和的機器人陪練，讓小朋友建立自信心！</div>
+                    </div>
+                </button>
+
+                <!-- 模式 4：挑戰電腦（進階挑戰） -->
+                <button onclick="startGame('ai_hard')" class="btn-kid w-full p-4 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white text-left flex items-center gap-4">
+                    <span class="text-3xl bg-white/25 p-2.5 rounded-xl">🤖</span>
+                    <div>
+                        <div class="font-black text-lg">挑戰西洋棋大師（進階 AI）</div>
+                        <div class="text-xs text-white/95">會思考戰術的電腦對手，適合爸爸或進階挑戰！</div>
+                    </div>
+                </button>
+            </div>
+
+            <div class="mt-4 text-center">
+                <button id="btn-close-setup" onclick="closeSetupModal()" class="text-sm font-bold text-[#8c6d53] hover:text-[#4a3728] underline hidden">
+                    返回目前的棋局
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 兵的升變選擇視窗 (大圖示兒童友善設計) -->
+    <div id="promotion-modal" class="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-[#fffcf7] w-full max-w-sm rounded-3xl p-6 shadow-2xl border-4 border-amber-400 text-center">
+            <div class="text-3xl mb-1">👑</div>
+            <h3 class="text-xl font-black text-[#4a3728]">小兵衝到底線啦！</h3>
+            <p class="text-sm text-[#8c6d53] mb-4">請選擇要變身成哪一種厲害的棋子：</p>
+            <div id="promotion-choices" class="grid grid-cols-2 gap-3">
+                <!-- 由 JS 動態填入對應顏色的皇后、城堡、主教、騎士 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 遊戲結束勝負結算視窗 (新增「觀看棋盤」復盤按鈕) -->
+    <div id="gameover-modal" class="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-[#fffcf7] w-full max-w-sm rounded-3xl p-6 shadow-2xl border-4 border-amber-400 text-center">
+            <div id="gameover-emoji" class="text-6xl mb-3">🏆</div>
+            <h2 id="gameover-title" class="text-2xl font-black text-[#4a3728] mb-1">白方獲勝！</h2>
+            <p id="gameover-desc" class="text-base text-[#6e533c] mb-5">太精彩了！完成了一次漂亮的將死！</p>
+            
+            <div class="flex flex-col gap-2.5">
+                <!-- 重點優化按鈕 1：隱藏彈窗觀看最後將死局面 -->
+                <button onclick="enterReviewMode()" class="btn-kid w-full py-3.5 px-4 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-black text-base sm:text-lg flex items-center justify-center gap-2">
+                    <span>🔍</span> <span>觀看棋盤（查看最後局面）</span>
+                </button>
+
+                <!-- 重點優化按鈕 2：直接再來一局 -->
+                <button onclick="restartCurrentMode()" class="btn-kid w-full py-3.5 px-4 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-black text-base sm:text-lg flex items-center justify-center gap-2">
+                    <span>🔄</span> <span>再來一局</span>
+                </button>
+
+                <button onclick="openSetupModal()" class="btn-kid w-full py-2.5 px-4 rounded-2xl bg-amber-100 hover:bg-amber-200 text-[#4a3728] font-bold text-sm">
+                    切換其他模式 🎮
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * 1. SVG 經典立體西洋棋子圖庫 (清晰高對比，適合兒童辨識)
+         * ============================================================================
+         */
+        const PIECE_SVGS = {
+            wK: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#2c1e16" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 11.63V6M20 8h5" stroke-linejoin="miter"/><path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" fill="#fffdf9" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-3.5-7.5-13-10.5-16-4-3 6 5 10 5 10V37z" fill="#fffdf9"/><path d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/></g></svg>`,
+            wQ: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="#fffdf9" fill-rule="evenodd" stroke="#2c1e16" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM24.5 7.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM41 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM16 8.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM33 9a2 2 0 1 1-4 0 2 2 0 1 1 4 0z"/><path d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11V11l-5.5 13.5-3-15-3 15-5.5-14V25L7 14l2 12z" stroke-linecap="butt"/><path d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z" stroke-linecap="butt"/><path d="M11.5 30c3.5-1 18.5-1 22 0M12 33.5c6-1 15-1 21 0" fill="none"/></g></svg>`,
+            wR: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="#fffdf9" fill-rule="evenodd" stroke="#2c1e16" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zM12 36v-4h21v4H12zM11 14V9h4v2h5V9h5v2h5V9h4v5" stroke-linecap="butt"/><path d="M34 14l-3 3H14l-3-3"/><path d="M31 17v12.5H14V17" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M31 29.5l1.5 2.5h-20l1.5-2.5"/><path d="M11 14h23" fill="none" stroke-linejoin="miter"/></g></svg>`,
+            wB: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#2c1e16" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g fill="#fffdf9" stroke-linecap="butt"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.354.49-2.323.47-3-.5 1.354-1.94 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5" stroke-linejoin="miter"/></g></svg>`,
+            wN: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#2c1e16" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" fill="#fffdf9"/><path d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3" fill="#fffdf9"/><path d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0zM14.933 15.75a.5 1.5 30 1 1-.866-.5.5 1.5 30 1 1 .866.5z" fill="#2c1e16"/></g></svg>`,
+            wP: `<svg viewBox="0 0 45 45" class="piece-svg"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z" fill="#fffdf9" stroke="#2c1e16" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+
+            bK: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#1a1a1a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 11.63V6" stroke-linejoin="miter"/><path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" fill="#333333" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-3.5-7.5-13-10.5-16-4-3 6 5 10 5 10V37z" fill="#333333"/><path d="M20 8h5" stroke-linejoin="miter"/><path d="M32 29.5s8.5-4 6.03-9.65C34.15 14 25 18 22.5 24.5l.01 2.1-.01-2.1C20 18 9.906 14 6.997 19.85c-2.497 5.65 4.853 9 4.853 9" stroke="#ececec" stroke-width="1.4"/><path d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0" stroke="#ececec" stroke-width="1.4"/></g></svg>`,
+            bQ: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="#333333" fill-rule="evenodd" stroke="#1a1a1a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g stroke="none"><circle cx="6" cy="12" r="2.75"/><circle cx="14" cy="9" r="2.75"/><circle cx="22.5" cy="8" r="2.75"/><circle cx="31" cy="9" r="2.75"/><circle cx="39" cy="12" r="2.75"/></g><path d="M9 26c8.5-1.5 21-1.5 27 0l2.5-12.5L31 25l-.3-14.1-5.2 13.6-3-14.5-3 14.5-5.2-13.6L14 25 6.5 13.5 9 26z" stroke-linecap="butt"/><path d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z" stroke-linecap="butt"/><path d="M11 38.5a35 35 1 0 0 23 0" fill="none" stroke-linecap="butt"/><path d="M11 29a35 35 1 0 1 23 0m-21.5 2.5h20m-21 3a35 35 1 0 0 22 0" fill="none" stroke="#ececec" stroke-width="1.4"/></g></svg>`,
+            bR: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="#333333" fill-rule="evenodd" stroke="#1a1a1a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zM12.5 32l1.5-2.5h17l1.5 2.5h-20zM12 36v-4h21v4H12z" stroke-linecap="butt"/><path d="M14 29.5v-13h17v13H14z" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M14 16.5L11 14h23l-3 2.5H14zM11 14V9h4v2h5V9h5v2h5V9h4v5H11z" stroke-linecap="butt"/><path d="M12 35.5h21m-20-4h19m-18-2h17m-17-13h17M11 14h23" fill="none" stroke="#ececec" stroke-width="1.2" stroke-linejoin="miter"/></g></svg>`,
+            bB: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#1a1a1a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g fill="#333333" stroke-linecap="butt"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.354.49-2.323.47-3-.5 1.354-1.94 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5" stroke="#ececec" stroke-width="1.5" stroke-linejoin="miter"/></g></svg>`,
+            bN: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#1a1a1a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" fill="#333333"/><path d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3" fill="#333333"/><path d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0zM14.933 15.75a.5 1.5 30 1 1-.866-.5.5 1.5 30 1 1 .866.5z" fill="#ececec" stroke="#ececec"/><path d="M24.55 10.4l-.45 1.45.5.15c3.15 1 5.65 2.49 7.9 6.75S35.75 29.06 35.25 39l-.05.5h2.25l.05-.5c.5-10.06-.88-16.85-3.25-21.34-2.37-4.49-5.79-6.64-9.19-7.16l-.51-.1z" fill="#ececec" stroke="none"/></g></svg>`,
+            bP: `<svg viewBox="0 0 45 45" class="piece-svg"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z" fill="#333333" stroke="#1a1a1a" stroke-width="1.8" stroke-linecap="round"/></svg>`
+        };
+
+        const PIECE_NAMES_ZH = {
+            K: '國王', Q: '皇后', R: '城堡', B: '主教', N: '騎士', P: '小兵'
+        };
+
+        const PIECE_VALUES = {
+            P: 100, N: 320, B: 330, R: 500, Q: 900, K: 20000
+        };
+
+        /**
+         * ============================================================================
+         * 2. Web Audio API 柔和木頭敲擊與慶祝音效系統 (無外部音檔依賴)
+         * ============================================================================
+         */
+        let soundEnabled = true;
+        let audioCtx = null;
+
+        function ensureAudioCtx() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    audioCtx = new AudioContext();
+                }
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playTone(freq, endFreq, duration, type = 'sine', volume = 0.25, delay = 0) {
+            if (!soundEnabled) return;
+            ensureAudioCtx();
+            if (!audioCtx) return;
+
+            const now = audioCtx.currentTime + delay;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, now);
+            if (endFreq) {
+                osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+            }
+
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(volume, now + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start(now);
+            osc.stop(now + duration + 0.02);
+        }
+
+        function playSound(type) {
+            if (!soundEnabled) return;
+            try {
+                if (type === 'select') {
+                    // 輕巧木頭點擊聲
+                    playTone(520, 320, 0.06, 'sine', 0.18);
+                } else if (type === 'move') {
+                    // 溫潤木棋落子聲
+                    playTone(260, 110, 0.11, 'triangle', 0.28);
+                } else if (type === 'capture') {
+                    // 清脆吃子雙音
+                    playTone(220, 95, 0.12, 'triangle', 0.32);
+                    playTone(440, 330, 0.12, 'sine', 0.22, 0.05);
+                } else if (type === 'check') {
+                    // 將軍警示音
+                    playTone(659.25, 659.25, 0.12, 'sine', 0.22);
+                    playTone(523.25, 523.25, 0.22, 'sine', 0.25, 0.13);
+                } else if (type === 'win') {
+                    // 歡樂勝利和弦琶音
+                    playTone(523.25, 523.25, 0.25, 'triangle', 0.22, 0);
+                    playTone(659.25, 659.25, 0.25, 'triangle', 0.22, 0.12);
+                    playTone(783.99, 783.99, 0.25, 'triangle', 0.22, 0.24);
+                    playTone(1046.50, 1046.50, 0.55, 'triangle', 0.26, 0.36);
+                }
+            } catch (e) {
+                console.warn('音效播放略過:', e);
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            document.getElementById('sound-icon').textContent = soundEnabled ? '🔊' : '🔇';
+            const label = document.querySelector('#btn-sound span:last-child');
+            if (label) label.textContent = soundEnabled ? '音效開' : '已靜音';
+            if (soundEnabled) playSound('select');
+        }
+
+        /**
+         * ============================================================================
+         * 3. 完整西洋棋核心引擎 (含王車易位、吃過路兵、兵升變、將軍/將死/逼和判定)
+         * ============================================================================
+         */
+        let gameMode = 'pvp_side'; // 'pvp_side', 'pvp_flip', 'ai_easy', 'ai_hard'
+        let showHints = true;
+        let boardFlipped = false;
+        let board = [];
+        let turn = 'w'; // 'w' or 'b'
+        let castlingRights = { wK: true, wQ: true, bK: true, bQ: true };
+        let enPassantTarget = null; // { r, c } or null
+        let historyStack = []; // 儲存每一步完整快照供悔棋
+        let selectedSq = null; // { r, c }
+        let legalMovesForSelected = []; // 當前選中棋子的合法走法
+        let lastMove = null; // { from: {r, c}, to: {r, c} }
+        let hintMoveSuggestion = null; // { from: {r, c}, to: {r, c} }
+        let isGameOver = false;
+        let gameOverSummary = { emoji: '🏆', title: '', desc: '', shortBanner: '' };
+        let checkAttackerSquares = []; // 賽後復盤標示：正在攻擊國王的敵方棋子位置
+        let aiThinking = false;
+        let pendingPromotion = null; // { from, to, moveObj }
+
+        // 初始化標準開局棋盤
+        function initBoardState() {
+            board = [
+                ['bR', 'bN', 'bB', 'bQ', 'bK', 'bB', 'bN', 'bR'],
+                ['bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP'],
+                [null, null, null, null, null, null, null, null],
+                [null, null, null, null, null, null, null, null],
+                [null, null, null, null, null, null, null, null],
+                [null, null, null, null, null, null, null, null],
+                ['wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP'],
+                ['wR', 'wN', 'wB', 'wQ', 'wK', 'wB', 'wN', 'wR']
+            ];
+            turn = 'w';
+            castlingRights = { wK: true, wQ: true, bK: true, bQ: true };
+            enPassantTarget = null;
+            historyStack = [];
+            selectedSq = null;
+            legalMovesForSelected = [];
+            lastMove = null;
+            hintMoveSuggestion = null;
+            isGameOver = false;
+            checkAttackerSquares = [];
+            aiThinking = false;
+            pendingPromotion = null;
+            document.getElementById('review-banner').classList.add('hidden');
+        }
+
+        function cloneBoard(b) {
+            return b.map(row => [...row]);
+        }
+
+        function inBounds(r, c) {
+            return r >= 0 && r < 8 && c >= 0 && c < 8;
+        }
+
+        function getPieceColor(piece) {
+            return piece ? piece[0] : null;
+        }
+
+        function getPieceType(piece) {
+            return piece ? piece[1] : null;
+        }
+
+        // 產生偽合法移動 (尚未過濾自己國王是否被將軍)
+        function generatePseudoLegalMoves(b, color, cr, ep) {
+            const moves = [];
+            const enemy = color === 'w' ? 'b' : 'w';
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const p = b[r][c];
+                    if (!p || getPieceColor(p) !== color) continue;
+                    const type = getPieceType(p);
+
+                    if (type === 'P') {
+                        const dir = color === 'w' ? -1 : 1;
+                        const startRow = color === 'w' ? 6 : 1;
+                        const promoRow = color === 'w' ? 0 : 7;
+
+                        // 前進一格
+                        if (inBounds(r + dir, c) && !b[r + dir][c]) {
+                            if (r + dir === promoRow) {
+                                ['Q', 'R', 'B', 'N'].forEach(promo => {
+                                    moves.push({ from: { r, c }, to: { r: r + dir, c }, promotion: promo });
+                                });
+                            } else {
+                                moves.push({ from: { r, c }, to: { r: r + dir, c } });
+                                // 起始位置前進兩格
+                                if (r === startRow && !b[r + 2 * dir][c]) {
+                                    moves.push({ from: { r, c }, to: { r: r + 2 * dir, c }, isDoublePawn: true });
+                                }
+                            }
+                        }
+
+                        // 斜向吃子與吃過路兵
+                        for (const dc of [-1, 1]) {
+                            const nr = r + dir, nc = c + dc;
+                            if (!inBounds(nr, nc)) continue;
+                            const target = b[nr][nc];
+                            if (target && getPieceColor(target) === enemy) {
+                                if (nr === promoRow) {
+                                    ['Q', 'R', 'B', 'N'].forEach(promo => {
+                                        moves.push({ from: { r, c }, to: { r: nr, c: nc }, capture: true, promotion: promo });
+                                    });
+                                } else {
+                                    moves.push({ from: { r, c }, to: { r: nr, c: nc }, capture: true });
+                                }
+                            } else if (ep && ep.r === nr && ep.c === nc) {
+                                moves.push({ from: { r, c }, to: { r: nr, c: nc }, capture: true, isEnPassant: true });
+                            }
+                        }
+                    } else if (type === 'N') {
+                        const jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+                        for (const [dr, dc] of jumps) {
+                            const nr = r + dr, nc = c + dc;
+                            if (!inBounds(nr, nc)) continue;
+                            const target = b[nr][nc];
+                            if (!target || getPieceColor(target) === enemy) {
+                                moves.push({ from: { r, c }, to: { r: nr, c: nc }, capture: !!target });
+                            }
+                        }
+                    } else if (type === 'B' || type === 'R' || type === 'Q') {
+                        const dirs = [];
+                        if (type === 'B' || type === 'Q') dirs.push([-1,-1],[-1,1],[1,-1],[1,1]);
+                        if (type === 'R' || type === 'Q') dirs.push([-1,0],[1,0],[0,-1],[0,1]);
+                        for (const [dr, dc] of dirs) {
+                            let nr = r + dr, nc = c + dc;
+                            while (inBounds(nr, nc)) {
+                                const target = b[nr][nc];
+                                if (!target) {
+                                    moves.push({ from: { r, c }, to: { r: nr, c: nc } });
+                                } else {
+                                    if (getPieceColor(target) === enemy) {
+                                        moves.push({ from: { r, c }, to: { r: nr, c: nc }, capture: true });
+                                    }
+                                    break;
+                                }
+                                nr += dr;
+                                nc += dc;
+                            }
+                        }
+                    } else if (type === 'K') {
+                        for (let dr = -1; dr <= 1; dr++) {
+                            for (let dc = -1; dc <= 1; dc++) {
+                                if (dr === 0 && dc === 0) continue;
+                                const nr = r + dr, nc = c + dc;
+                                if (!inBounds(nr, nc)) continue;
+                                const target = b[nr][nc];
+                                if (!target || getPieceColor(target) === enemy) {
+                                    moves.push({ from: { r, c }, to: { r: nr, c: nc }, capture: !!target });
+                                }
+                            }
+                        }
+                        // 王車易位 (Castling)
+                        const homeRow = color === 'w' ? 7 : 0;
+                        if (r === homeRow && c === 4) {
+                            // 短易位 (王側)
+                            if (cr[color + 'K'] && !b[homeRow][5] && !b[homeRow][6] && b[homeRow][7] === color + 'R') {
+                                moves.push({ from: { r, c }, to: { r: homeRow, c: 6 }, isCastle: 'K' });
+                            }
+                            // 長易位 (后側)
+                            if (cr[color + 'Q'] && !b[homeRow][3] && !b[homeRow][2] && !b[homeRow][1] && b[homeRow][0] === color + 'R') {
+                                moves.push({ from: { r, c }, to: { r: homeRow, c: 2 }, isCastle: 'Q' });
+                            }
+                        }
+                    }
+                }
+            }
+            return moves;
+        }
+
+        // 尋找所有正在攻擊國王的敵方棋子座標 (用於賽後復盤視覺提示)
+        function findKingAttackers(b, kingColor) {
+            let kingPos = null;
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (b[r][c] === kingColor + 'K') {
+                        kingPos = { r, c };
+                        break;
+                    }
+                }
+                if (kingPos) break;
+            }
+            if (!kingPos) return [];
+
+            const attackerColor = kingColor === 'w' ? 'b' : 'w';
+            const attackers = [];
+            const { r: targetR, c: targetC } = kingPos;
+
+            // 1. 兵
+            const pawnDir = attackerColor === 'w' ? 1 : -1;
+            for (const dc of [-1, 1]) {
+                const pr = targetR + pawnDir, pc = targetC + dc;
+                if (inBounds(pr, pc) && b[pr][pc] === attackerColor + 'P') attackers.push({ r: pr, c: pc });
+            }
+            // 2. 騎士
+            const jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+            for (const [dr, dc] of jumps) {
+                const nr = targetR + dr, nc = targetC + dc;
+                if (inBounds(nr, nc) && b[nr][nc] === attackerColor + 'N') attackers.push({ r: nr, c: nc });
+            }
+            // 3. 直線 (車/后)
+            const ortho = [[-1,0],[1,0],[0,-1],[0,1]];
+            for (const [dr, dc] of ortho) {
+                let nr = targetR + dr, nc = targetC + dc;
+                while (inBounds(nr, nc)) {
+                    const p = b[nr][nc];
+                    if (p) {
+                        if (p === attackerColor + 'R' || p === attackerColor + 'Q') attackers.push({ r: nr, c: nc });
+                        break;
+                    }
+                    nr += dr; nc += dc;
+                }
+            }
+            // 4. 斜線 (象/后)
+            const diag = [[-1,-1],[-1,1],[1,-1],[1,1]];
+            for (const [dr, dc] of diag) {
+                let nr = targetR + dr, nc = targetC + dc;
+                while (inBounds(nr, nc)) {
+                    const p = b[nr][nc];
+                    if (p) {
+                        if (p === attackerColor + 'B' || p === attackerColor + 'Q') attackers.push({ r: nr, c: nc });
+                        break;
+                    }
+                    nr += dr; nc += dc;
+                }
+            }
+            return attackers;
+        }
+
+        // 檢查某方國王是否正被攻擊
+        function isKingInCheck(b, color) {
+            let kingPos = null;
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (b[r][c] === color + 'K') {
+                        kingPos = { r, c };
+                        break;
+                    }
+                }
+                if (kingPos) break;
+            }
+            if (!kingPos) return true;
+            return isSquareAttacked(b, kingPos.r, kingPos.c, color === 'w' ? 'b' : 'w');
+        }
+
+        // 檢查特定格子是否被 attackerColor 攻擊
+        function isSquareAttacked(b, targetR, targetC, attackerColor) {
+            const pawnDir = attackerColor === 'w' ? 1 : -1;
+            for (const dc of [-1, 1]) {
+                const pr = targetR + pawnDir, pc = targetC + dc;
+                if (inBounds(pr, pc) && b[pr][pc] === attackerColor + 'P') return true;
+            }
+            const jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+            for (const [dr, dc] of jumps) {
+                const nr = targetR + dr, nc = targetC + dc;
+                if (inBounds(nr, nc) && b[nr][nc] === attackerColor + 'N') return true;
+            }
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    if (dr === 0 && dc === 0) continue;
+                    const kr = targetR + dr, kc = targetC + dc;
+                    if (inBounds(kr, kc) && b[kr][kc] === attackerColor + 'K') return true;
+                }
+            }
+            const ortho = [[-1,0],[1,0],[0,-1],[0,1]];
+            for (const [dr, dc] of ortho) {
+                let nr = targetR + dr, nc = targetC + dc;
+                while (inBounds(nr, nc)) {
+                    const p = b[nr][nc];
+                    if (p) {
+                        if (p === attackerColor + 'R' || p === attackerColor + 'Q') return true;
+                        break;
+                    }
+                    nr += dr; nc += dc;
+                }
+            }
+            const diag = [[-1,-1],[-1,1],[1,-1],[1,1]];
+            for (const [dr, dc] of diag) {
+                let nr = targetR + dr, nc = targetC + dc;
+                while (inBounds(nr, nc)) {
+                    const p = b[nr][nc];
+                    if (p) {
+                        if (p === attackerColor + 'B' || p === attackerColor + 'Q') return true;
+                        break;
+                    }
+                    nr += dr; nc += dc;
+                }
+            }
+            return false;
+        }
+
+        // 在虛擬棋盤上執行一步並回傳新狀態
+        function applyMoveToState(b, cr, move) {
+            const nb = cloneBoard(b);
+            const ncr = { ...cr };
+            const piece = nb[move.from.r][move.from.c];
+            const color = getPieceColor(piece);
+            const type = getPieceType(piece);
+            let nep = null;
+
+            nb[move.to.r][move.to.c] = move.promotion ? (color + move.promotion) : piece;
+            nb[move.from.r][move.from.c] = null;
+
+            if (move.isEnPassant) {
+                nb[move.from.r][move.to.c] = null;
+            }
+
+            if (move.isDoublePawn) {
+                nep = { r: (move.from.r + move.to.r) / 2, c: move.from.c };
+            }
+
+            if (move.isCastle) {
+                const row = move.from.r;
+                if (move.isCastle === 'K') {
+                    nb[row][5] = nb[row][7];
+                    nb[row][7] = null;
+                } else if (move.isCastle === 'Q') {
+                    nb[row][3] = nb[row][0];
+                    nb[row][0] = null;
+                }
+            }
+
+            if (type === 'K') {
+                ncr[color + 'K'] = false;
+                ncr[color + 'Q'] = false;
+            }
+            if (type === 'R') {
+                if (move.from.r === 7 && move.from.c === 0) ncr.wQ = false;
+                if (move.from.r === 7 && move.from.c === 7) ncr.wK = false;
+                if (move.from.r === 0 && move.from.c === 0) ncr.bQ = false;
+                if (move.from.r === 0 && move.from.c === 7) ncr.bK = false;
+            }
+            if (move.to.r === 7 && move.to.c === 0) ncr.wQ = false;
+            if (move.to.r === 7 && move.to.c === 7) ncr.wK = false;
+            if (move.to.r === 0 && move.to.c === 0) ncr.bQ = false;
+            if (move.to.r === 0 && move.to.c === 7) ncr.bK = false;
+
+            return { board: nb, castlingRights: ncr, enPassantTarget: nep };
+        }
+
+        // 產生所有完全合法的移動
+        function generateLegalMoves(b, color, cr, ep) {
+            const pseudo = generatePseudoLegalMoves(b, color, cr, ep);
+            const enemy = color === 'w' ? 'b' : 'w';
+            const legal = [];
+
+            for (const m of pseudo) {
+                if (m.isCastle) {
+                    if (isKingInCheck(b, color)) continue;
+                    const row = m.from.r;
+                    const passCol = m.isCastle === 'K' ? 5 : 3;
+                    if (isSquareAttacked(b, row, passCol, enemy)) continue;
+                }
+
+                const nextState = applyMoveToState(b, cr, m);
+                if (!isKingInCheck(nextState.board, color)) {
+                    legal.push(m);
+                }
+            }
+            return legal;
+        }
+
+        /**
+         * ============================================================================
+         * 4. 電腦 AI 引擎 (支援「小熊機器人新手 AI」與「西洋棋大師進階 AI」)
+         * ============================================================================
+         */
+        const PST_PAWN = [
+            [0,  0,  0,  0,  0,  0,  0,  0],
+            [50, 50, 50, 50, 50, 50, 50, 50],
+            [10, 10, 20, 30, 30, 20, 10, 10],
+            [5,  5, 10, 25, 25, 10,  5,  5],
+            [0,  0,  0, 20, 20,  0,  0,  0],
+            [5, -5,-10,  0,  0,-10, -5,  5],
+            [5, 10, 10,-20,-20, 10, 10,  5],
+            [0,  0,  0,  0,  0,  0,  0,  0]
+        ];
+        const PST_KNIGHT = [
+            [-50,-40,-30,-30,-30,-30,-40,-50],
+            [-40,-20,  0,  0,  0,  0,-20,-40],
+            [-30,  0, 10, 15, 15, 10,  0,-30],
+            [-30,  5, 15, 20, 20, 15,  5,-30],
+            [-30,  0, 15, 20, 20, 15,  0,-30],
+            [-30,  5, 10, 15, 15, 10,  5,-30],
+            [-40,-20,  0,  5,  5,  0,-20,-40],
+            [-50,-40,-30,-30,-30,-30,-40,-50]
+        ];
+
+        function evaluateBoard(b) {
+            let score = 0;
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const p = b[r][c];
+                    if (!p) continue;
+                    const color = getPieceColor(p);
+                    const type = getPieceType(p);
+                    let val = PIECE_VALUES[type] || 0;
+
+                    const evalR = color === 'w' ? r : 7 - r;
+                    if (type === 'P') val += PST_PAWN[evalR][c];
+                    else if (type === 'N') val += PST_KNIGHT[evalR][c];
+                    else if (type === 'B' || type === 'Q') {
+                        val += (3.5 - Math.abs(3.5 - evalR)) * 4 + (3.5 - Math.abs(3.5 - c)) * 4;
+                    }
+
+                    score += (color === 'w' ? val : -val);
+                }
+            }
+            return score;
+        }
+
+        function minimax(b, cr, ep, depth, alpha, beta, isMaximizing) {
+            const color = isMaximizing ? 'w' : 'b';
+            const moves = generateLegalMoves(b, color, cr, ep);
+
+            if (moves.length === 0) {
+                if (isKingInCheck(b, color)) {
+                    return isMaximizing ? (-99999 - depth) : (99999 + depth);
+                }
+                return 0; // 逼和
+            }
+
+            if (depth === 0) {
+                return evaluateBoard(b);
+            }
+
+            moves.sort((a, b) => (b.capture ? 1 : 0) - (a.capture ? 1 : 0));
+
+            if (isMaximizing) {
+                let maxEval = -Infinity;
+                for (const m of moves) {
+                    const next = applyMoveToState(b, cr, m);
+                    const ev = minimax(next.board, next.castlingRights, next.enPassantTarget, depth - 1, alpha, beta, false);
+                    maxEval = Math.max(maxEval, ev);
+                    alpha = Math.max(alpha, ev);
+                    if (beta <= alpha) break;
+                }
+                return maxEval;
+            } else {
+                let minEval = Infinity;
+                for (const m of moves) {
+                    const next = applyMoveToState(b, cr, m);
+                    const ev = minimax(next.board, next.castlingRights, next.enPassantTarget, depth - 1, alpha, beta, true);
+                    minEval = Math.min(minEval, ev);
+                    beta = Math.min(beta, ev);
+                    if (beta <= alpha) break;
+                }
+                return minEval;
+            }
+        }
+
+        function chooseBestMove(b, color, cr, ep, difficulty) {
+            const legal = generateLegalMoves(b, color, cr, ep);
+            if (legal.length === 0) return null;
+
+            // 兒童新手級：45% 機率隨機走步，讓小朋友有獲勝機會
+            if (difficulty === 'easy') {
+                if (Math.random() < 0.45) {
+                    return legal[Math.floor(Math.random() * legal.length)];
+                }
+            }
+
+            const depth = difficulty === 'easy' ? 1 : 3;
+            const isMax = (color === 'w');
+            let bestScore = isMax ? -Infinity : Infinity;
+            let bestMoves = [];
+
+            for (const m of legal) {
+                const next = applyMoveToState(b, cr, m);
+                const score = minimax(next.board, next.castlingRights, next.enPassantTarget, depth - 1, -Infinity, Infinity, !isMax);
+                if (isMax) {
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMoves = [m];
+                    } else if (score === bestScore) {
+                        bestMoves.push(m);
+                    }
+                } else {
+                    if (score < bestScore) {
+                        bestScore = score;
+                        bestMoves = [m];
+                    } else if (score === bestScore) {
+                        bestMoves.push(m);
+                    }
+                }
+            }
+            return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+        }
+
+        /**
+         * ============================================================================
+         * 5. 遊戲流程控制與賽後觀看棋盤（復盤）邏輯
+         * ============================================================================
+         */
+        function startGame(mode) {
+            gameMode = mode;
+            document.getElementById('setup-modal').classList.add('hidden');
+            document.getElementById('gameover-modal').classList.add('hidden');
+            document.getElementById('gameover-modal').classList.remove('flex');
+            document.getElementById('btn-close-setup').classList.remove('hidden');
+
+            initBoardState();
+            boardFlipped = false;
+            updatePlayerLabels();
+            renderAll();
+            playSound('move');
+        }
+
+        function restartCurrentMode() {
+            startGame(gameMode);
+        }
+
+        function openSetupModal() {
+            document.getElementById('gameover-modal').classList.add('hidden');
+            document.getElementById('gameover-modal').classList.remove('flex');
+            document.getElementById('setup-modal').classList.remove('hidden');
+        }
+
+        function closeSetupModal() {
+            document.getElementById('setup-modal').classList.add('hidden');
+        }
+
+        // 重點功能：隱藏結束彈窗，進入賽後觀看棋盤（復盤）模式
+        function enterReviewMode() {
+            document.getElementById('gameover-modal').classList.add('hidden');
+            document.getElementById('gameover-modal').classList.remove('flex');
+
+            const reviewBanner = document.getElementById('review-banner');
+            const reviewText = document.getElementById('review-banner-text');
+            reviewText.textContent = `${gameOverSummary.shortBanner}目前為賽後觀看模式`;
+            reviewBanner.classList.remove('hidden');
+
+            playSound('select');
+            renderAll();
+        }
+
+        // 重點功能：在賽後觀看模式中，隨時重新打開結束結算視窗
+        function reopenGameOverModal() {
+            document.getElementById('review-banner').classList.add('hidden');
+            const modal = document.getElementById('gameover-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            playSound('select');
+        }
+
+        function updatePlayerLabels() {
+            const wName = document.getElementById('white-name');
+            const bName = document.getElementById('black-name');
+            const bAvatar = document.getElementById('black-avatar');
+
+            if (gameMode === 'pvp_side' || gameMode === 'pvp_flip') {
+                wName.textContent = '白方玩家';
+                bName.textContent = '黑方玩家';
+                bAvatar.textContent = '♚';
+            } else if (gameMode === 'ai_easy') {
+                wName.textContent = '小棋士（你）';
+                bName.textContent = '小熊機器人';
+                bAvatar.textContent = '🧸';
+            } else if (gameMode === 'ai_hard') {
+                wName.textContent = '挑戰者（你）';
+                bName.textContent = '西洋棋大師 AI';
+                bAvatar.textContent = '🤖';
+            }
+        }
+
+        function toggleHints() {
+            showHints = !showHints;
+            const btn = document.getElementById('btn-hints');
+            if (showHints) {
+                btn.classList.remove('bg-stone-200', 'text-stone-600');
+                btn.classList.add('bg-emerald-100', 'text-emerald-900');
+            } else {
+                btn.classList.remove('bg-emerald-100', 'text-emerald-900');
+                btn.classList.add('bg-stone-200', 'text-stone-600');
+            }
+            renderBoard();
+            playSound('select');
+        }
+
+        function manualFlipBoard() {
+            boardFlipped = !boardFlipped;
+            renderBoard();
+            playSound('select');
+        }
+
+        // 「幫我想一步」兒童友善提示功能
+        function askHintMove() {
+            if (isGameOver || aiThinking) return;
+            const best = chooseBestMove(board, turn, castlingRights, enPassantTarget, 'hard');
+            if (best) {
+                hintMoveSuggestion = { from: best.from, to: best.to };
+                selectedSq = { r: best.from.r, c: best.from.c };
+                legalMovesForSelected = generateLegalMoves(board, turn, castlingRights, enPassantTarget)
+                    .filter(m => m.from.r === best.from.r && m.from.c === best.from.c);
+                renderBoard();
+                playSound('select');
+
+                const pieceName = PIECE_NAMES_ZH[getPieceType(board[best.from.r][best.from.c])];
+                const bannerText = document.getElementById('turn-text');
+                bannerText.textContent = `小提示：試試看移動「${pieceName}」到發光的位置！`;
+            }
+        }
+
+        // 點擊棋盤格子處理
+        function handleSquareClick(r, c) {
+            if (isGameOver || aiThinking || pendingPromotion) return;
+            if ((gameMode === 'ai_easy' || gameMode === 'ai_hard') && turn === 'b') return;
+
+            hintMoveSuggestion = null;
+            const clickedPiece = board[r][c];
+            const clickedColor = getPieceColor(clickedPiece);
+
+            // 情況 1：已選中己方棋子，且點擊目標在合法步數清單中 -> 執行移動！
+            if (selectedSq) {
+                const matchingMoves = legalMovesForSelected.filter(m => m.to.r === r && m.to.c === c);
+                if (matchingMoves.length > 0) {
+                    if (matchingMoves[0].promotion) {
+                        openPromotionModal(matchingMoves);
+                        return;
+                    }
+                    executeMove(matchingMoves[0]);
+                    return;
+                }
+            }
+
+            // 情況 2：點擊己方其他棋子 -> 切換選中狀態並顯示合法步數提示
+            if (clickedColor === turn) {
+                selectedSq = { r, c };
+                const allLegal = generateLegalMoves(board, turn, castlingRights, enPassantTarget);
+                legalMovesForSelected = allLegal.filter(m => m.from.r === r && m.from.c === c);
+                playSound('select');
+                renderBoard();
+            } else {
+                selectedSq = null;
+                legalMovesForSelected = [];
+                renderBoard();
+            }
+        }
+
+        // 開啟兵的升變選擇視窗
+        function openPromotionModal(promoMoves) {
+            pendingPromotion = promoMoves;
+            const container = document.getElementById('promotion-choices');
+            container.innerHTML = '';
+            const color = turn;
+            const options = [
+                { code: 'Q', label: '皇后 (最強)' },
+                { code: 'R', label: '城堡' },
+                { code: 'B', label: '主教' },
+                { code: 'N', label: '騎士' }
+            ];
+
+            options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'btn-kid flex flex-col items-center justify-center p-3 rounded-2xl bg-amber-50 hover:bg-amber-200 border-2 border-amber-300';
+                btn.innerHTML = `
+                    <div class="w-14 h-14">${PIECE_SVGS[color + opt.code]}</div>
+                    <span class="font-bold text-sm text-[#4a3728] mt-1">${opt.label}</span>
+                `;
+                btn.onclick = () => {
+                    const chosenMove = pendingPromotion.find(m => m.promotion === opt.code);
+                    document.getElementById('promotion-modal').classList.add('hidden');
+                    document.getElementById('promotion-modal').classList.remove('flex');
+                    pendingPromotion = null;
+                    if (chosenMove) executeMove(chosenMove);
+                };
+                container.appendChild(btn);
+            });
+
+            const modal = document.getElementById('promotion-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            playSound('select');
+        }
+
+        // 執行移動並更新遊戲狀態
+        function executeMove(move) {
+            historyStack.push({
+                board: cloneBoard(board),
+                turn: turn,
+                castlingRights: { ...castlingRights },
+                enPassantTarget: enPassantTarget ? { ...enPassantTarget } : null,
+                lastMove: lastMove ? JSON.parse(JSON.stringify(lastMove)) : null
+            });
+
+            const isCapture = move.capture || move.isEnPassant;
+            const nextState = applyMoveToState(board, castlingRights, move);
+            board = nextState.board;
+            castlingRights = nextState.castlingRights;
+            enPassantTarget = nextState.enPassantTarget;
+            lastMove = { from: move.from, to: move.to };
+
+            selectedSq = null;
+            legalMovesForSelected = [];
+            hintMoveSuggestion = null;
+
+            // 切換回合
+            turn = (turn === 'w') ? 'b' : 'w';
+
+            // 若是「面對面自動翻轉」模式，切換回合時自動旋轉棋盤
+            if (gameMode === 'pvp_flip') {
+                boardFlipped = (turn === 'b');
+            }
+
+            // 檢查將軍與遊戲結束狀態
+            const inCheck = isKingInCheck(board, turn);
+            checkAttackerSquares = inCheck ? findKingAttackers(board, turn) : [];
+            const nextLegalMoves = generateLegalMoves(board, turn, castlingRights, enPassantTarget);
+
+            if (nextLegalMoves.length === 0) {
+                isGameOver = true;
+                // 若在面對面翻轉模式將死，保持當前最後一擊的視角方便觀看
+                if (gameMode === 'pvp_flip') {
+                    boardFlipped = (turn === 'w'); // 讓贏家視角朝下
+                }
+                renderAll();
+
+                if (inCheck) {
+                    playSound('win');
+                    const winner = turn === 'w' ? '黑方' : '白方';
+                    const loser = turn === 'w' ? '白方' : '黑方';
+                    gameOverSummary = {
+                        emoji: '🏆',
+                        title: `${winner}將死獲勝！`,
+                        desc: `太精彩了！${loser}國王無路可逃，完成了一次漂亮的將死！`,
+                        shortBanner: `🏆 ${winner}將死獲勝！`
+                    };
+                    showGameOverModal(gameOverSummary.emoji, gameOverSummary.title, gameOverSummary.desc);
+                    triggerCelebration();
+                } else {
+                    playSound('move');
+                    gameOverSummary = {
+                        emoji: '🤝',
+                        title: '逼和平局！',
+                        desc: '雖然國王沒有被將軍，但已經沒有合法步數可走了，雙方握手言和！',
+                        shortBanner: '🤝 雙方逼和平局！'
+                    };
+                    showGameOverModal(gameOverSummary.emoji, gameOverSummary.title, gameOverSummary.desc);
+                }
+                return;
+            }
+
+            if (inCheck) {
+                playSound('check');
+            } else if (isCapture) {
+                playSound('capture');
+            } else {
+                playSound('move');
+            }
+
+            renderAll();
+
+            // 若輪到電腦 AI 思考
+            if (!isGameOver && (gameMode === 'ai_easy' || gameMode === 'ai_hard') && turn === 'b') {
+                aiThinking = true;
+                updateStatusUI();
+                setTimeout(() => {
+                    const diff = gameMode === 'ai_easy' ? 'easy' : 'hard';
+                    const aiMove = chooseBestMove(board, 'b', castlingRights, enPassantTarget, diff);
+                    aiThinking = false;
+                    if (aiMove) {
+                        executeMove(aiMove);
+                    }
+                }, 550);
+            }
+        }
+
+        // 悔棋一步功能
+        function undoMove() {
+            if (historyStack.length === 0 || aiThinking || isGameOver) return;
+
+            let stepsToPop = 1;
+            if ((gameMode === 'ai_easy' || gameMode === 'ai_hard') && turn === 'w' && historyStack.length >= 2) {
+                stepsToPop = 2;
+            }
+
+            let prevState = null;
+            for (let i = 0; i < stepsToPop; i++) {
+                if (historyStack.length > 0) {
+                    prevState = historyStack.pop();
+                }
+            }
+
+            if (prevState) {
+                board = prevState.board;
+                turn = prevState.turn;
+                castlingRights = prevState.castlingRights;
+                enPassantTarget = prevState.enPassantTarget;
+                lastMove = prevState.lastMove;
+                selectedSq = null;
+                legalMovesForSelected = [];
+                hintMoveSuggestion = null;
+                const inCheck = isKingInCheck(board, turn);
+                checkAttackerSquares = inCheck ? findKingAttackers(board, turn) : [];
+                if (gameMode === 'pvp_flip') {
+                    boardFlipped = (turn === 'b');
+                }
+                playSound('move');
+                renderAll();
+            }
+        }
+
+        function showGameOverModal(emoji, title, desc) {
+            document.getElementById('gameover-emoji').textContent = emoji;
+            document.getElementById('gameover-title').textContent = title;
+            document.getElementById('gameover-desc').textContent = desc;
+            const modal = document.getElementById('gameover-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function triggerCelebration() {
+            if (typeof confetti === 'function') {
+                confetti({
+                    particleCount: 95,
+                    spread: 75,
+                    origin: { y: 0.6 }
+                });
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 6. 畫面渲染：棋盤、提示標記、戰利品與分數統計
+         * ============================================================================
+         */
+        function renderAll() {
+            renderBoard();
+            updateStatusUI();
+            updateCapturedAndScore();
+            document.getElementById('btn-undo').disabled = (historyStack.length === 0 || aiThinking || isGameOver);
+            document.getElementById('btn-ask-hint').disabled = (aiThinking || isGameOver);
+        }
+
+        function renderBoard() {
+            const boardEl = document.getElementById('chessboard');
+            if (boardFlipped) {
+                boardEl.classList.add('board-flipped');
+            } else {
+                boardEl.classList.remove('board-flipped');
+            }
+
+            boardEl.innerHTML = '';
+            const inCheck = isKingInCheck(board, turn);
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const cell = document.createElement('div');
+                    const isLight = (r + c) % 2 === 0;
+                    cell.className = `square-cell relative flex items-center justify-center cursor-pointer ${isLight ? 'sq-light' : 'sq-dark'}`;
+
+                    // 上一步移動高亮
+                    if (lastMove && ((lastMove.from.r === r && lastMove.from.c === c) || (lastMove.to.r === r && lastMove.to.c === c))) {
+                        cell.classList.add('sq-last-move');
+                    }
+
+                    // 當前選中格子高亮
+                    if (selectedSq && selectedSq.r === r && selectedSq.c === c) {
+                        cell.classList.add('sq-selected');
+                    }
+
+                    // 國王被將軍 / 將死高亮
+                    const piece = board[r][c];
+                    if (inCheck && piece === turn + 'K') {
+                        cell.classList.add('sq-check');
+                    }
+
+                    // 賽後復盤：標示正在攻擊國王的致命棋子
+                    if (isGameOver && checkAttackerSquares.some(pos => pos.r === r && pos.c === c)) {
+                        cell.classList.add('sq-attacker');
+                    }
+
+                    // 座標小字 (協助小朋友認識棋盤座標)
+                    if (c === 0) {
+                        const rankLabel = document.createElement('span');
+                        rankLabel.className = `coord-label absolute top-0.5 left-1 text-[10px] font-bold opacity-60 pointer-events-none ${isLight ? 'text-[#8b5a2b]' : 'text-[#f3e5ce]'}`;
+                        rankLabel.textContent = 8 - r;
+                        cell.appendChild(rankLabel);
+                    }
+                    if (r === 7) {
+                        const fileLabel = document.createElement('span');
+                        fileLabel.className = `coord-label absolute bottom-0.5 right-1 text-[10px] font-bold opacity-60 pointer-events-none ${isLight ? 'text-[#8b5a2b]' : 'text-[#f3e5ce]'}`;
+                        fileLabel.textContent = String.fromCharCode(97 + c);
+                        cell.appendChild(fileLabel);
+                    }
+
+                    // 繪製棋子
+                    if (piece) {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'w-full h-full flex items-center justify-center';
+                        wrapper.innerHTML = PIECE_SVGS[piece];
+                        if (selectedSq && selectedSq.r === r && selectedSq.c === c) {
+                            wrapper.firstElementChild.classList.add('piece-selected');
+                        }
+                        cell.appendChild(wrapper);
+                    }
+
+                    // 繪製兒童友善移動提示 (綠點 / 紅圈 / 紫點)
+                    if (showHints && selectedSq && !isGameOver) {
+                        const targetMove = legalMovesForSelected.find(m => m.to.r === r && m.to.c === c);
+                        if (targetMove) {
+                            const hintEl = document.createElement('div');
+                            if (targetMove.isCastle || targetMove.isEnPassant) {
+                                hintEl.className = 'hint-special absolute';
+                            } else if (targetMove.capture) {
+                                hintEl.className = 'hint-capture absolute';
+                            } else {
+                                hintEl.className = 'hint-move absolute';
+                            }
+                            cell.appendChild(hintEl);
+                        }
+                    }
+
+                    // 若有「幫我想一步」的推薦終點，加上閃亮外框
+                    if (hintMoveSuggestion && hintMoveSuggestion.to.r === r && hintMoveSuggestion.to.c === c) {
+                        const sparkle = document.createElement('div');
+                        sparkle.className = 'absolute inset-1 border-4 border-sky-400 rounded-lg animate-ping pointer-events-none';
+                        cell.appendChild(sparkle);
+                    }
+
+                    cell.onclick = () => handleSquareClick(r, c);
+                    boardEl.appendChild(cell);
+                }
+            }
+        }
+
+        function updateStatusUI() {
+            const banner = document.getElementById('turn-banner');
+            const turnDot = document.getElementById('turn-dot');
+            const turnText = document.getElementById('turn-text');
+            const wStatus = document.getElementById('white-status');
+            const bStatus = document.getElementById('black-status');
+            const inCheck = isKingInCheck(board, turn);
+
+            if (isGameOver) {
+                turnDot.className = 'w-3.5 h-3.5 rounded-full bg-orange-500 inline-block';
+                turnText.textContent = `${gameOverSummary.title}（可旋轉棋盤觀看細節）`;
+                banner.className = 'mb-2 px-5 py-1.5 rounded-full bg-amber-100 border-2 border-orange-400 shadow-sm flex items-center gap-2 text-sm sm:text-base font-extrabold text-[#4a3728]';
+                wStatus.textContent = '對局已結束';
+                wStatus.className = 'text-xs font-bold text-amber-700';
+                bStatus.textContent = '對局已結束';
+                bStatus.className = 'text-xs font-bold text-amber-700';
+                return;
+            }
+
+            if (aiThinking) {
+                turnDot.className = 'w-3.5 h-3.5 rounded-full bg-sky-500 animate-bounce inline-block';
+                turnText.textContent = '電腦正在思考下一步... 🤔';
+                banner.className = 'mb-2 px-5 py-1.5 rounded-full bg-sky-50 border-2 border-sky-400 shadow-sm flex items-center gap-2 text-sm sm:text-base font-extrabold text-sky-900';
+                bStatus.textContent = '正在動腦筋思考中...';
+                wStatus.textContent = '請稍候';
+                return;
+            }
+
+            if (turn === 'w') {
+                turnDot.className = 'w-3.5 h-3.5 rounded-full bg-amber-400 inline-block';
+                turnText.textContent = inCheck ? '⚠️ 白方被將軍了！快保護國王！' : '輪到白方走棋！';
+                banner.className = inCheck
+                    ? 'mb-2 px-5 py-1.5 rounded-full bg-red-50 border-2 border-red-500 shadow-sm flex items-center gap-2 text-sm sm:text-base font-extrabold text-red-700 animate-pulse'
+                    : 'mb-2 px-5 py-1.5 rounded-full bg-white border-2 border-amber-400 shadow-sm flex items-center gap-2 text-sm sm:text-base font-extrabold text-[#4a3728]';
+                wStatus.textContent = inCheck ? '危險！國王被威脅' : '輪到你囉，請選棋子';
+                wStatus.className = inCheck ? 'text-xs font-bold text-red-600' : 'text-xs font-bold text-emerald-600';
+                bStatus.textContent = '等待白方走棋';
+                bStatus.className = 'text-xs font-medium text-slate-400';
+            } else {
+                turnDot.className = 'w-3.5 h-3.5 rounded-full bg-slate-800 inline-block';
+                turnText.textContent = inCheck ? '⚠️ 黑方被將軍了！快保護國王！' : '輪到黑方走棋！';
+                banner.className = inCheck
+                    ? 'mb-2 px-5 py-1.5 rounded-full bg-red-50 border-2 border-red-500 shadow-sm flex items-center gap-2 text-sm sm:text-base font-extrabold text-red-700 animate-pulse'
+                    : 'mb-2 px-5 py-1.5 rounded-full bg-slate-800 border-2 border-slate-600 shadow-sm flex items-center gap-2 text-sm sm:text-base font-extrabold text-white';
+                bStatus.textContent = inCheck ? '危險！國王被威脅' : '輪到你囉，請選棋子';
+                bStatus.className = inCheck ? 'text-xs font-bold text-red-600' : 'text-xs font-bold text-emerald-600';
+                wStatus.textContent = '等待黑方走棋';
+                wStatus.className = 'text-xs font-medium text-slate-400';
+            }
+        }
+
+        // 計算雙方被吃掉的棋子與子力分數領先優勢
+        function updateCapturedAndScore() {
+            const initialCounts = { Q: 1, R: 2, B: 2, N: 2, P: 8 };
+            const currentW = { Q: 0, R: 0, B: 0, N: 0, P: 0 };
+            const currentB = { Q: 0, R: 0, B: 0, N: 0, P: 0 };
+
+            let wMat = 0, bMat = 0;
+            const matPoints = { Q: 9, R: 5, B: 3, N: 3, P: 1 };
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const p = board[r][c];
+                    if (!p) continue;
+                    const color = getPieceColor(p);
+                    const type = getPieceType(p);
+                    if (type === 'K') continue;
+                    if (color === 'w') {
+                        currentW[type]++;
+                        wMat += matPoints[type];
+                    } else {
+                        currentB[type]++;
+                        bMat += matPoints[type];
+                    }
+                }
+            }
+
+            // 白方吃掉的黑子
+            const wCapContainer = document.getElementById('white-captured');
+            wCapContainer.innerHTML = '';
+            let wHasCap = false;
+            ['Q', 'R', 'B', 'N', 'P'].forEach(t => {
+                const lost = Math.max(0, initialCounts[t] - currentB[t]);
+                for (let i = 0; i < lost; i++) {
+                    wHasCap = true;
+                    const icon = document.createElement('div');
+                    icon.className = 'w-6 h-6';
+                    icon.innerHTML = PIECE_SVGS['b' + t];
+                    wCapContainer.appendChild(icon);
+                }
+            });
+            if (!wHasCap) wCapContainer.innerHTML = '<span class="text-xs text-slate-400 px-1">尚未吃子</span>';
+
+            // 黑方吃掉的白子
+            const bCapContainer = document.getElementById('black-captured');
+            bCapContainer.innerHTML = '';
+            let bHasCap = false;
+            ['Q', 'R', 'B', 'N', 'P'].forEach(t => {
+                const lost = Math.max(0, initialCounts[t] - currentW[t]);
+                for (let i = 0; i < lost; i++) {
+                    bHasCap = true;
+                    const icon = document.createElement('div');
+                    icon.className = 'w-6 h-6';
+                    icon.innerHTML = PIECE_SVGS['w' + t];
+                    bCapContainer.appendChild(icon);
+                }
+            });
+            if (!bHasCap) bCapContainer.innerHTML = '<span class="text-xs text-slate-400 px-1">尚未吃子</span>';
+
+            // 顯示分數優勢
+            const wScoreEl = document.getElementById('white-score');
+            const bScoreEl = document.getElementById('black-score');
+            const diff = wMat - bMat;
+            if (diff > 0) {
+                wScoreEl.textContent = `+${diff}分`;
+                wScoreEl.classList.remove('hidden');
+                bScoreEl.classList.add('hidden');
+            } else if (diff < 0) {
+                bScoreEl.textContent = `+${Math.abs(diff)}分`;
+                bScoreEl.classList.remove('hidden');
+                wScoreEl.classList.add('hidden');
+            } else {
+                wScoreEl.classList.add('hidden');
+                bScoreEl.classList.add('hidden');
+            }
+        }
+
+        // 網頁載入完成時初始化棋盤背景
+        window.onload = function () {
+            initBoardState();
+            renderAll();
+        };
+    </script>
 </body>
 </html>
